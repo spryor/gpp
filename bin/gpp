@@ -40,10 +40,12 @@ CLASS=
 
 case $CMD in
     run) CLASS=$1; shift;;
+    exp) CLASS=gpp.app.Exp;;
     help) help; exit 1;;
     *) echo "Unrecognized command: $CMD"; help; exit 1;;
 esac
 
+echo $JAVA_COMMAND $CLASS ${1+"$@"}  
 $JAVA_COMMAND $CLASS ${1+"$@"} 
 (( EXIT_CODE += $? ))
 
