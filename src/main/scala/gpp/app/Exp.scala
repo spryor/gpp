@@ -16,11 +16,11 @@ object Exp{
     val opts = ExpOpts(args)
     
     opts.method() match {
-      case "majority" => val (goldLabels, predictedLabels, items) = majorityMethod(opts.train(), opts.eval())
+      case "majority" => val (goldLabels, predictedLabels, items) = MajorityMethod(opts.train(), opts.eval())
                         println(ConfusionMatrix(goldLabels, predictedLabels, items))
-      case "lexicon" => val (goldLabels, predictedLabels, items) = lexiconMethod(opts.eval())
+      case "lexicon" => val (goldLabels, predictedLabels, items) = LexiconMethod(opts.eval())
                         println(ConfusionMatrix(goldLabels, predictedLabels, items))
-      case "L2R_LR" => val (goldLabels, predictedLabels, items) = l2rlrMethod(opts.train(),opts.eval(),opts.cost().toDouble, opts.extended())
+      case "L2R_LR" => val (goldLabels, predictedLabels, items) = L2RLLRMethod(opts.train(),opts.eval(),opts.cost().toDouble, opts.extended())
                         println(ConfusionMatrix(goldLabels, predictedLabels, items))
       case _ => println("Method not implemented")
     }
@@ -28,7 +28,7 @@ object Exp{
 
 }
 
-class method {
+class Method {
   /**
     * A simple helper function for reading XML files
     *
@@ -37,14 +37,14 @@ class method {
   def readXML(path:String) = scala.xml.XML.loadFile(path)
 }
 
-object majorityMethod extends method {
+object MajorityMethod extends Method {
   /**
    * A function to use the lexicon method for SA.
    * 
    * @param trainFile - the path to the training xml file
    * @param evalFile - the path to the evaluation xml file
    */
-  def apply(trainFile:String, evalFile:String) = {
+  def apply(trainFile:String, evalFile:String):(Seq[String], Seq[String], Seq[String])  = {
     val trainData = readXML(trainFile)
     val evalData = readXML(evalFile)
    
@@ -61,55 +61,59 @@ object majorityMethod extends method {
   }
 }
 
-object lexiconMethod extends method {
-  def apply(evalFile:String) = {
+object LexiconMethod extends Method {
+  def apply(evalFile:String):(Seq[String], Seq[String], Seq[String])  = {
     val evalData = readXML(evalFile)
     val goldLabels = (evalData \ "item").map{item => (item \ "@label").text}
-    val predictedLabels = (evalData \ "item")
-                            .map{item => 
-                              {
-                              val labelAssignment = Twokenize(item.text)
-                                                .map(English.polarityLexicon)
-                                                .sum
-                              if(labelAssignment > 0) {
-                                "positive"
-                              } else if(labelAssignment < 0) {
-                                "negative"
-                              } else {
-                                "neutral"
-                              }
-                            }
-                          }
+    val predictedLabels = (evalData \ "item").map(item => labelInput(item.text))
     (goldLabels, predictedLabels, goldLabels)
   }
+
+  def labelInput(input:String) = {
+    val labelAssignment = Twokenize(input)
+      .map(English.polarityLexicon)
+      .sum
+    if(labelAssignment > 0) {
+      "positive"
+    } else if(labelAssignment < 0) {
+      "negative"
+    } else {
+      "neutral"
+    }
+  }
+
 }
 
-object l2rlrMethod extends method {
+object L2RLLRMethod extends Method {
+
+  val simpleFeaturizer = new Featurizer[String, String] {
+        def apply(input: String) = input
+         .replaceAll("""([\?!\";\|\[\]])""", " $1 ") 
+         .trim
+         .split("\\s+")
+         .map(tok => FeatureObservation("word="+tok))
+      }
+
+  val extendedFeaturizer = new Featurizer[String, String] {
+        def apply(input: String) = {
+          val features = input
+          .replaceAll("""([\?!\";\|\[\]])""", " $1 ") 
+          .trim
+          .toLowerCase
+          .split("\\s+")
+          .map(tok => FeatureObservation("word="+tok))
+          features ++ Array(FeatureObservation("polarity="+LexiconMethod.labelInput(input)))
+        }
+      }
+
   def apply(trainFile:String, 
             evalFile:String, 
             costParam:Double, 
             extended:Boolean):(Seq[String], Seq[String], Seq[String]) = {
 
-    val cost = costParam
-
-    def readRaw(filename: String) = {
-      for(item <- (readXML(filename) \ "item")) 
-        yield Example((item \ "@label").text, item.text.trim)
-    }
-    
-    val simpleFeaturizer = new Featurizer[String, String] {
-      def apply(input: String) = input
-       .replaceAll("""([\?!\";\|\[\]])""", " $1 ") 
-       .trim
-       .split("\\s+")
-       .map(tok => FeatureObservation("word="+tok))
-    }
-
-    val extendedFeaturizer = new BowFeaturizer
-
     val rawExamples = readRaw(trainFile)
 
-    val config = LiblinearConfig(cost=cost)
+    val config = LiblinearConfig(cost=costParam)
      
     val classifier = trainClassifier(config, 
                                      if(extended) extendedFeaturizer else simpleFeaturizer,
@@ -121,7 +125,12 @@ object l2rlrMethod extends method {
       (ex.label, maxLabelPpa(classifier.evalRaw(ex.features)), ex.features)
 
     comparisons.unzip3
- }
+  }
+
+  def readRaw(filename: String) = {
+    for(item <- (readXML(filename) \ "item")) 
+      yield Example((item \ "@label").text, item.text.trim)
+  }
 }
 
 object ExpOpts {
