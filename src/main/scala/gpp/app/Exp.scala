@@ -20,7 +20,7 @@ object Exp{
                         println(ConfusionMatrix(goldLabels, predictedLabels, items))
       case "lexicon" => val (goldLabels, predictedLabels, items) = lexiconMethod(opts.eval())
                         println(ConfusionMatrix(goldLabels, predictedLabels, items))
-      case "L2R_LR" => val (goldLabels, predictedLabels, items) = l2rlrMethod(opts.train(),opts.eval(),opts.cost().toDouble)
+      case "L2R_LR" => val (goldLabels, predictedLabels, items) = l2rlrMethod(opts.train(),opts.eval(),opts.cost().toDouble, opts.extended())
                         println(ConfusionMatrix(goldLabels, predictedLabels, items))
       case _ => println("Method not implemented")
     }
@@ -69,16 +69,19 @@ object Exp{
     (goldLabels, predictedLabels, goldLabels)
   }
 
-  def l2rlrMethod(trainFile:String, evalFile:String, costParam:Double) = {
+  def l2rlrMethod(trainFile:String, 
+                  evalFile:String, 
+                  costParam:Double, 
+                  extended:Boolean):(Seq[String], Seq[String], Seq[String]) = {
+
     val cost = costParam
 
-    //val PpaLineRE = """^(\d+)\s(.*)\s(N|V)$""".r
     def readRaw(filename: String) = {
       for(item <- (readXML(filename) \ "item")) 
         yield Example((item \ "@label").text, item.text.trim)
     }
     
-    val featurizer = new Featurizer[String, String] {
+    val simpleFeaturizer = new Featurizer[String, String] {
       def apply(input: String) = input
        .replaceAll("""([\?!\";\|\[\]])""", " $1 ") 
        .trim
@@ -86,19 +89,22 @@ object Exp{
        .map(tok => FeatureObservation("word="+tok))
     }
 
+    val extendedFeaturizer = new BowFeaturizer
+
     val rawExamples = readRaw(trainFile)
 
     val config = LiblinearConfig(cost=cost)
      
-    val classifier = trainClassifier(config, featurizer, rawExamples)
+    val classifier = trainClassifier(config, 
+                                     if(extended) extendedFeaturizer else simpleFeaturizer,
+                                     rawExamples)
 
     def maxLabelPpa = maxLabel(classifier.labels) _
 
     val comparisons = for (ex <- readRaw(evalFile).toList) yield 
       (ex.label, maxLabelPpa(classifier.evalRaw(ex.features)), ex.features)
 
-    val (goldLabels, predictions, inputs):(Seq[String], Seq[String], Seq[String]) = comparisons.unzip3
-    (goldLabels, predictions, inputs)
+    comparisons.unzip3
  }
 
 
@@ -140,7 +146,8 @@ For usage see below:
     val train = opt[String]("train", short='t', descr="The files containing training events.")
     val eval = opt[String]("eval", short='e', required=true, descr="The files containing evalualation events.")
     val method = opt[String]("method", short='m', default=Some("L2R_LR"), descr="The type of solver to use.")
-    val cost = opt[String]("cost",short='c',default=Some("1.0"),descr="Cost parameter for the L2R_LR method.")
+    val cost = opt[String]("cost", short='c', default=Some("1.0"), descr="Cost parameter for the L2R_LR method.")
+    val extended = opt[Boolean]("extended", short='x', default=Some(false), descr="Use extended features")
   }
 }
 
