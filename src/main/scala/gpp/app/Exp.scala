@@ -5,6 +5,11 @@ object Exp{
   import gpp.util.English
   import java.io.File
   import nak.util.ConfusionMatrix
+  import nak.NakContext._
+  import nak.core._
+  import nak.data._
+  import nak.liblinear._  
+  import nak.util.ConfusionMatrix
   import chalk.lang.eng.Twokenize  
  
   def main(args: Array[String]){
@@ -12,8 +17,10 @@ object Exp{
     
     opts.method() match {
       case "majority" => val (goldLabels, predictedLabels, items) = majorityMethod(opts.train(), opts.eval())
-                         println(ConfusionMatrix(goldLabels, predictedLabels, items))
+                        println(ConfusionMatrix(goldLabels, predictedLabels, items))
       case "lexicon" => val (goldLabels, predictedLabels, items) = lexiconMethod(opts.eval())
+                        println(ConfusionMatrix(goldLabels, predictedLabels, items))
+      case "L2R_LR" => val (goldLabels, predictedLabels, items) = l2rlrMethod(opts.train(),opts.eval(),opts.cost().toDouble)
                         println(ConfusionMatrix(goldLabels, predictedLabels, items))
       case _ => println("Method not implemented")
     }
@@ -62,6 +69,31 @@ object Exp{
     (goldLabels, predictedLabels, goldLabels)
   }
 
+  def l2rlrMethod(trainFile:String, evalFile:String, costParam:Double) = {
+    val cost = costParam
+
+    //val PpaLineRE = """^(\d+)\s(.*)\s(N|V)$""".r
+    def readRaw(filename: String) = {
+      for(item <- (readXML(filename) \ "item")) 
+        yield Example((item \ "@label").text, item.text.trim)
+    }
+
+    val rawExamples = readRaw(trainFile)
+
+    val config = LiblinearConfig(cost=cost)
+     
+    val classifier = trainClassifier(config, new BowFeaturizer, rawExamples)
+
+    def maxLabelPpa = maxLabel(classifier.labels) _
+
+    val comparisons = for (ex <- readRaw(evalFile).toList) yield 
+      (ex.label, maxLabelPpa(classifier.evalRaw(ex.features)), ex.features)
+
+    val (goldLabels, predictions, inputs):(Seq[String], Seq[String], Seq[String]) = comparisons.unzip3
+    (goldLabels, predictions, inputs)
+ }
+
+
   /**
     * A simple helper function for reading XML files
     *
@@ -100,6 +132,7 @@ For usage see below:
     val train = opt[String]("train", short='t', descr="The files containing training events.")
     val eval = opt[String]("eval", short='e', required=true, descr="The files containing evalualation events.")
     val method = opt[String]("method", short='m', default=Some("L2R_LR"), descr="The type of solver to use.")
+    val cost = opt[String]("cost",short='c',default=Some("1.0"),descr="Cost parameter for the L2R_LR method.")
   }
 }
 
