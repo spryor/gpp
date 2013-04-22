@@ -17,7 +17,7 @@ UNMANAGED_JARS="`find $GPP_DIR/lib -name '*.jar' -print | tr '\n' ':'`"
 
 SCALA_LIB="$HOME/.sbt/boot/scala-2.10.1/lib/scala-library.jar"
 
-CP="$GPP_DIR/target/classes:$SCALA_LIB:$GPP_DIR/src/main/resources:$MANAGED_JARS:$UNMANAGED_JARS"
+CP="$GPP_DIR/target/scala-2.10/classes:$SCALA_LIB:$GPP_DIR/src/main/resources:$MANAGED_JARS:$UNMANAGED_JARS"
 
 JAVA="$JAVA_HOME/bin/java"
 JAVA_COMMAND="$JAVA -classpath $CP -Dgpp.dir=$GPP_DIR"
@@ -45,7 +45,6 @@ case $CMD in
     *) echo "Unrecognized command: $CMD"; help; exit 1;;
 esac
 
-echo $JAVA_COMMAND $CLASS ${1+"$@"}  
 $JAVA_COMMAND $CLASS ${1+"$@"} 
 (( EXIT_CODE += $? ))
 

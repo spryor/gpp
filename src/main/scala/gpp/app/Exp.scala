@@ -77,12 +77,20 @@ object Exp{
       for(item <- (readXML(filename) \ "item")) 
         yield Example((item \ "@label").text, item.text.trim)
     }
+    
+    val featurizer = new Featurizer[String, String] {
+      def apply(input: String) = input
+       .replaceAll("""([\?!\";\|\[\]])""", " $1 ") 
+       .trim
+       .split("\\s+")
+       .map(tok => FeatureObservation("word="+tok))
+    }
 
     val rawExamples = readRaw(trainFile)
 
     val config = LiblinearConfig(cost=cost)
      
-    val classifier = trainClassifier(config, new BowFeaturizer, rawExamples)
+    val classifier = trainClassifier(config, featurizer, rawExamples)
 
     def maxLabelPpa = maxLabel(classifier.labels) _
 
