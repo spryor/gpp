@@ -1,16 +1,16 @@
 package gpp.app
 
-object Exp{
- 
-  import gpp.util.English
-  import java.io.File
-  import nak.util.ConfusionMatrix
-  import nak.NakContext._
-  import nak.core._
-  import nak.data._
-  import nak.liblinear._  
-  import nak.util.ConfusionMatrix
-  import chalk.lang.eng.Twokenize  
+import gpp.util.English
+import java.io.File
+import nak.util.ConfusionMatrix
+import nak.NakContext._
+import nak.core._
+import nak.data._
+import nak.liblinear._  
+import nak.util.ConfusionMatrix
+import chalk.lang.eng.Twokenize
+
+object Exp{  
  
   def main(args: Array[String]){
     val opts = ExpOpts(args)
@@ -26,13 +26,25 @@ object Exp{
     }
   }
 
+}
+
+class method {
+  /**
+    * A simple helper function for reading XML files
+    *
+    * @param path - The path to the XML file to be read
+    */
+  def readXML(path:String) = scala.xml.XML.loadFile(path)
+}
+
+object majorityMethod extends method {
   /**
    * A function to use the lexicon method for SA.
    * 
    * @param trainFile - the path to the training xml file
    * @param evalFile - the path to the evaluation xml file
    */
-  def majorityMethod(trainFile:String, evalFile:String) = {
+  def apply(trainFile:String, evalFile:String) = {
     val trainData = readXML(trainFile)
     val evalData = readXML(evalFile)
    
@@ -47,8 +59,10 @@ object Exp{
     val predictedLabels = goldLabels.map(_ => topLabel)
     (goldLabels, predictedLabels, goldLabels)
   }
- 
-  def lexiconMethod(evalFile:String) = {
+}
+
+object lexiconMethod extends method {
+  def apply(evalFile:String) = {
     val evalData = readXML(evalFile)
     val goldLabels = (evalData \ "item").map{item => (item \ "@label").text}
     val predictedLabels = (evalData \ "item")
@@ -68,11 +82,13 @@ object Exp{
                           }
     (goldLabels, predictedLabels, goldLabels)
   }
+}
 
-  def l2rlrMethod(trainFile:String, 
-                  evalFile:String, 
-                  costParam:Double, 
-                  extended:Boolean):(Seq[String], Seq[String], Seq[String]) = {
+object l2rlrMethod extends method {
+  def apply(trainFile:String, 
+            evalFile:String, 
+            costParam:Double, 
+            extended:Boolean):(Seq[String], Seq[String], Seq[String]) = {
 
     val cost = costParam
 
@@ -106,15 +122,6 @@ object Exp{
 
     comparisons.unzip3
  }
-
-
-  /**
-    * A simple helper function for reading XML files
-    *
-    * @param path - The path to the XML file to be read
-    */
-  def readXML(path:String) = scala.xml.XML.loadFile(path)
-
 }
 
 object ExpOpts {
