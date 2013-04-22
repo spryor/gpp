@@ -10,6 +10,11 @@ import nak.liblinear._
 import nak.util.ConfusionMatrix
 import chalk.lang.eng.Twokenize
 
+/**
+ * The Exp object contains the main method for the Exp
+ * functionality. It serves the purpose of selecting 
+ * functions based on command line arguments.
+ */
 object Exp {  
  
   def main(args: Array[String]) {
@@ -28,23 +33,32 @@ object Exp {
 
 }
 
+/**
+ * The Method class acts as the base class for the Method 
+ * objects.
+ */
 class Method {
+
   /**
     * A simple helper function for reading XML files
     *
     * @param path - The path to the XML file to be read
     */
-  def readXML(path:String) = scala.xml.XML.loadFile(path)
+  def readXML(path: String) = scala.xml.XML.loadFile(path)
 }
 
+/**
+ * The MajorityMethod object contains the functionality for 
+ * running Majority label based sentiment analysis.
+ */
 object MajorityMethod extends Method {
   /**
-   * A function to use the lexicon method for SA.
+   * A function to use the majority method for SA.
    * 
-   * @param trainFile - the path to the training xml file
-   * @param evalFile - the path to the evaluation xml file
+   * @param trainFile - The path to the training xml file
+   * @param evalFile - The path to the evaluation xml file
    */
-  def apply(trainFile:String, evalFile:String):(Seq[String], Seq[String], Seq[String])  = {
+  def apply(trainFile: String, evalFile: String):(Seq[String], Seq[String], Seq[String])  = {
     val trainData = readXML(trainFile)
     val evalData = readXML(evalFile)
    
@@ -62,15 +76,30 @@ object MajorityMethod extends Method {
   }
 }
 
+/**
+ * The LexiconMethod object contains the functionality for 
+ * running lexicon based sentiment analysis. 
+ */
 object LexiconMethod extends Method {
-  def apply(evalFile:String):(Seq[String], Seq[String], Seq[String])  = {
+  /**
+   * A function to use the lexicon method for SA.
+   * 
+   * @param evalFile - The path to the evaluation xml file
+   */
+  def apply(evalFile: String):(Seq[String], Seq[String], Seq[String])  = {
     val evalData = readXML(evalFile)
     val goldLabels = (evalData \ "item").map{item => (item \ "@label").text}
     val predictedLabels = (evalData \ "item").map(item => labelInput(item.text))
     (goldLabels, predictedLabels, goldLabels)
   }
-
-  def labelInput(input:String) = {
+  
+  /**
+   * The label input function simply takes a string and 
+   * returns a polarity label
+   *
+   * @param input - The string to be labeled.
+   */
+  def labelInput(input: String) = {
     val labelAssignment = Twokenize(input)
       .map(English.polarityLexicon)
       .sum
@@ -81,8 +110,14 @@ object LexiconMethod extends Method {
   }
 }
 
+/**
+ * The L2RLLRMethod object contains the functionality for 
+ * running L2-regularized logistic regression based sentiment 
+ * analysis. 
+ */
 object L2RLLRMethod extends Method {
 
+  //A featurizer using simple bag-of-words features
   val simpleFeaturizer = new Featurizer[String, String] {
         def apply(input: String) = input
          .replaceAll("""([\?!\";\|\[\]])""", " $1 ") 
@@ -91,6 +126,8 @@ object L2RLLRMethod extends Method {
          .map(tok => FeatureObservation("word="+tok))
       }
 
+  //A featurizer using lowercase bag-of-words features
+  //combined with lexicon based polarity features.
   val extendedFeaturizer = new Featurizer[String, String] {
         def apply(input: String) = {
           val features = input
@@ -102,11 +139,21 @@ object L2RLLRMethod extends Method {
           features ++ Array(FeatureObservation("polarity="+LexiconMethod.labelInput(input)))
         }
       }
-
-  def apply(trainFile:String, 
-            evalFile:String, 
-            costParam:Double, 
-            extended:Boolean):(Seq[String], Seq[String], Seq[String]) = {
+  
+  /**
+   * A function to use L2-regularized logistic regression
+   * for SA.
+   * 
+   * @param trainFile - The path to the training xml file
+   * @param evalFile - The path to the evaluation xml file
+   * @param costParam - The cost for value for the model.
+   * @param extended - A boolean value for whether or not to
+   *                   use extended features.
+   */
+  def apply(trainFile: String, 
+            evalFile: String, 
+            costParam: Double, 
+            extended: Boolean):(Seq[String], Seq[String], Seq[String]) = {
 
     val rawExamples = readRaw(trainFile)
     val config = LiblinearConfig(cost=costParam)    
@@ -122,6 +169,12 @@ object L2RLLRMethod extends Method {
     comparisons.unzip3
   }
 
+  /**
+   * A function to convert raw XML files to Example objects
+   *
+   * @param filename - The name of the file in the resources
+   *                   folder containing the data to read. 
+   */
   def readRaw(filename: String) = {
     for(item <- (readXML(filename) \ "item")) 
       yield Example((item \ "@label").text, item.text.trim)
