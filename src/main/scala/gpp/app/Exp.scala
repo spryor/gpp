@@ -10,9 +10,9 @@ import nak.liblinear._
 import nak.util.ConfusionMatrix
 import chalk.lang.eng.Twokenize
 
-object Exp{  
+object Exp {  
  
-  def main(args: Array[String]){
+  def main(args: Array[String]) {
     val opts = ExpOpts(args)
     
     opts.method() match {
@@ -50,7 +50,8 @@ object MajorityMethod extends Method {
    
     val topLabel = (trainData \ "item")
                      .map(item => (item \ "@label").text)
-                     .groupBy(l => l).mapValues(_.length)
+                     .groupBy(l => l)
+                     .mapValues(_.length)
                      .toList
                      .reduceLeft((a, b) => if(a._2 > b._2) a else b)
                      ._1
@@ -73,15 +74,11 @@ object LexiconMethod extends Method {
     val labelAssignment = Twokenize(input)
       .map(English.polarityLexicon)
       .sum
-    if(labelAssignment > 0) {
-      "positive"
-    } else if(labelAssignment < 0) {
-      "negative"
-    } else {
-      "neutral"
-    }
+      
+    if(labelAssignment > 0) "positive" 
+    else if(labelAssignment < 0)  "negative"
+    else "neutral"
   }
-
 }
 
 object L2RLLRMethod extends Method {
@@ -112,9 +109,7 @@ object L2RLLRMethod extends Method {
             extended:Boolean):(Seq[String], Seq[String], Seq[String]) = {
 
     val rawExamples = readRaw(trainFile)
-
-    val config = LiblinearConfig(cost=costParam)
-     
+    val config = LiblinearConfig(cost=costParam)    
     val classifier = trainClassifier(config, 
                                      if(extended) extendedFeaturizer else simpleFeaturizer,
                                      rawExamples)
@@ -123,7 +118,7 @@ object L2RLLRMethod extends Method {
 
     val comparisons = for (ex <- readRaw(evalFile).toList) yield 
       (ex.label, maxLabelPpa(classifier.evalRaw(ex.features)), ex.features)
-
+      
     comparisons.unzip3
   }
 
