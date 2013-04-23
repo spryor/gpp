@@ -1,10 +1,16 @@
-package gpp.util
+package gpp.app
+
 import gpp.util._
 
-object ConvertStanford {
+object Convert_Stanford {
 
   def main(args: Array[String]) {
-    val stanfordData = getData(args.mkString)
+    if(args.length < 1) {
+      println("Error: File path missing")
+      System.exit(1)
+    }
+ 
+    val stanfordData = getData(args(0).mkString)
     val marshalled =
       <dataset>
       { stanfordData.map { data =>
@@ -35,3 +41,4 @@ object ConvertStanford {
     }
   }
 }
+

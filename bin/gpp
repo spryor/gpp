@@ -42,6 +42,8 @@ case $CMD in
     convert-stanford) CLASS=gpp.util.ConvertStanford;;
     run) CLASS=$1; shift;;
     exp) CLASS=gpp.app.Exp;;
+    convert-stanford) CLASS=gpp.app.Convert_Stanford;;
+    convert-emoticon) CLASS=gpp.app.Convert_Emoticon;;
     help) help; exit 1;;
     *) echo "Unrecognized command: $CMD"; help; exit 1;;
 esac
