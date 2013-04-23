@@ -39,6 +39,7 @@ EOF
 CLASS=
 
 case $CMD in
+    convert-stanford) CLASS=gpp.util.ConvertStanford;;
     run) CLASS=$1; shift;;
     exp) CLASS=gpp.app.Exp;;
     help) help; exit 1;;
