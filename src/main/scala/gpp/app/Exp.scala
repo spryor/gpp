@@ -66,7 +66,6 @@ object MajorityMethod extends Method {
                      .map(item => (item \ "@label").text)
                      .groupBy(l => l)
                      .mapValues(_.length)
-                     .toList
                      .reduceLeft((a, b) => if(a._2 > b._2) a else b)
                      ._1
     
@@ -118,7 +117,7 @@ object LexiconMethod extends Method {
 object L2RLLRMethod extends Method {
 
   //A featurizer using simple bag-of-words features
-  val simpleFeaturizer = new Featurizer[String, String] {
+  val SimpleFeaturizer = new Featurizer[String, String] {
         def apply(input: String) = input
          .replaceAll("""([\?!\";\|\[\]])""", " $1 ") 
          .trim
@@ -128,15 +127,16 @@ object L2RLLRMethod extends Method {
 
   //A featurizer using lowercase bag-of-words features
   //combined with lexicon based polarity features.
-  val extendedFeaturizer = new Featurizer[String, String] {
+  val ExtendedFeaturizer = new Featurizer[String, String] {
         def apply(input: String) = {
           val features = input
-          .replaceAll("""([\?!\";\|\[\]])""", " $1 ") 
-          .trim
-          .toLowerCase
-          .split("\\s+")
-          .map(tok => FeatureObservation("word="+tok))
-          features ++ Array(FeatureObservation("polarity="+LexiconMethod.labelInput(input)))
+            .replaceAll("""([\?!\";\|\[\]])""", " $1 ") 
+            .trim
+            .toLowerCase
+            .split("\\s+")
+            .filterNot(English.stopwords)
+            .map(tok => FeatureObservation("word="+tok))
+            features ++ Array(FeatureObservation("polarity="+LexiconMethod.labelInput(input)))
         }
       }
   
@@ -158,7 +158,7 @@ object L2RLLRMethod extends Method {
     val rawExamples = readRaw(trainFile)
     val config = LiblinearConfig(cost=costParam)    
     val classifier = trainClassifier(config, 
-                                     if(extended) extendedFeaturizer else simpleFeaturizer,
+                                     if(extended) ExtendedFeaturizer else SimpleFeaturizer,
                                      rawExamples)
 
     def maxLabelPpa = maxLabel(classifier.labels) _

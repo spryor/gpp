@@ -14,7 +14,6 @@ object Resource {
       io.Source.fromInputStream(new GZIPInputStream(stream))
     else
       io.Source.fromInputStream(stream)
-  
   }
 
   def asStream(location: String) = {
@@ -27,6 +26,7 @@ object Resource {
 object English {
   lazy val getWordLabel = """.*word1=([a-z]+).*priorpolarity=([a-z]+).*""".r
   lazy val polarityLexicon = getPolarityLexicon()
+  lazy val stopwords = getLexicon("stopwords.english")
 
   def getPolarityLexicon() = {
     val mpqa = Resource.asSource("/lang/eng/lexicon/polarityLexicon.gz")
