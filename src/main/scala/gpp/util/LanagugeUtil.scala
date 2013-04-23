@@ -27,6 +27,7 @@ object English {
   lazy val getWordLabel = """.*word1=([a-z]+).*priorpolarity=([a-z]+).*""".r
   lazy val polarityLexicon = getPolarityLexicon()
   lazy val stopwords = getLexicon("stopwords.english")
+  lazy val emoticons = getLexicon("emoticons.txt", false)
 
   def getPolarityLexicon() = {
     val mpqa = Resource.asSource("/lang/eng/lexicon/polarityLexicon.gz")
@@ -47,9 +48,9 @@ object English {
     mpqa ++ posWords ++ negWords
   }
 
-  def getLexicon(filename: String) = 
+  def getLexicon(filename: String, checkForComments: Boolean = true) = 
     Resource.asSource("/lang/eng/lexicon/"+filename)
       .getLines
-      .filterNot(_.startsWith(";")) // filter out comments
+      .filterNot(!checkForComments && _.startsWith(";")) // filter out comments
       .toSet
 }

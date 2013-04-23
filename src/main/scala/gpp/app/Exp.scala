@@ -8,7 +8,9 @@ import nak.core._
 import nak.data._
 import nak.liblinear._  
 import nak.util.ConfusionMatrix
-import chalk.lang.eng.Twokenize
+import chalk.lang.eng.{PorterStemmer,Twokenize}
+import cmu.arktweetnlp.Tagger
+import cmu.arktweetnlp.Tagger.TaggedToken
 
 /**
  * The Exp object contains the main method for the Exp
@@ -91,7 +93,7 @@ object LexiconMethod extends Method {
     val predictedLabels = (evalData \ "item").map(item => labelInput(item.text))
     (goldLabels, predictedLabels, goldLabels)
   }
-  
+
   /**
    * The label input function simply takes a string and 
    * returns a polarity label
@@ -116,6 +118,9 @@ object LexiconMethod extends Method {
  */
 object L2RLLRMethod extends Method {
 
+  import java.util.List
+  import scala.collection.mutable.MutableList
+
   //A featurizer using simple bag-of-words features
   val SimpleFeaturizer = new Featurizer[String, String] {
         def apply(input: String) = input
@@ -125,18 +130,50 @@ object L2RLLRMethod extends Method {
          .map(tok => FeatureObservation("word="+tok))
       }
 
+  val Stemmer = new PorterStemmer
+  val Tagger = {
+    val model = new Tagger
+    model.loadModel("/cmu/arktweetnlp/model.20120919")
+    model
+  }
+
   //A featurizer using lowercase bag-of-words features
   //combined with lexicon based polarity features.
   val ExtendedFeaturizer = new Featurizer[String, String] {
         def apply(input: String) = {
-          val features = input
+          val words = input
             .replaceAll("""([\?!\";\|\[\]])""", " $1 ") 
             .trim
             .toLowerCase
-            .split("\\s+")
+            .replaceAll("(.)\\1\\1", "$1") 
+            .split("\\s+") 
+ 
+          val wordFeatures = words
             .filterNot(English.stopwords)
             .map(tok => FeatureObservation("word="+tok))
-            features ++ Array(FeatureObservation("polarity="+LexiconMethod.labelInput(input)))
+          val polarityFeature = 
+            Array(FeatureObservation("polarity="+LexiconMethod.labelInput(input)))
+          val allWordFeatures = words
+            .map(tok => FeatureObservation("everyWord="+tok))
+          val stemFeatures = words
+            .map(tok => (tok, Stemmer(tok)))
+            .filterNot(pair => pair._1 == pair._2)
+            .map{case (tok, stem) => FeatureObservation("stem="+stem)}
+
+          val tagged: List[TaggedToken] = Tagger.tokenizeAndTag(input)
+          val it = tagged.iterator
+          var sequence: MutableList[(String, String)] = MutableList()
+          
+          while(it.hasNext()) {
+            val item = it.next()
+            val pair: (String, String) = (item.token, item.tag)
+            sequence += pair
+          }
+
+          val taggedFeatures = sequence
+            .map(pair => FeatureObservation("word+tag="+pair._1+"+"+pair._2))
+          
+          wordFeatures ++ polarityFeature ++ allWordFeatures ++ stemFeatures ++ taggedFeatures
         }
       }
   
@@ -175,10 +212,9 @@ object L2RLLRMethod extends Method {
    * @param filename - The name of the file in the resources
    *                   folder containing the data to read. 
    */
-  def readRaw(filename: String) = {
+  def readRaw(filename: String) = 
     for(item <- (readXML(filename) \ "item")) 
       yield Example((item \ "@label").text, item.text.trim)
-  }
 }
 
 object ExpOpts {
