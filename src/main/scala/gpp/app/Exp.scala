@@ -22,7 +22,7 @@ object Exp {
  
   def main(args: Array[String]) {
     val opts = ExpOpts(args)
-    
+
     opts.method() match {
       case "majority" => val (goldLabels, predictedLabels, items) = MajorityMethod(opts.train(), opts.eval())
                         println(ConfusionMatrix(goldLabels, predictedLabels, items))
@@ -48,6 +48,12 @@ class Method {
     * @param path - The path to the XML file to be read
     */
   def readXML(path: String) = scala.xml.XML.loadFile(path)
+
+  def readXMLFiles(paths: List[String]) =
+    paths.flatMap(path => (readXML(path) \ "item")) 
+    //for(path <- paths)
+    //  for(item <- (readXML(path) \ "item"))
+    //    yield item
 }
 
 /**
@@ -61,18 +67,18 @@ object MajorityMethod extends Method {
    * @param trainFile - The path to the training xml file
    * @param evalFile - The path to the evaluation xml file
    */
-  def apply(trainFile: String, evalFile: String):(Seq[String], Seq[String], Seq[String])  = {
-    val trainData = readXML(trainFile)
-    val evalData = readXML(evalFile)
+  def apply(trainFiles: List[String], evalFiles: List[String]):(Seq[String], Seq[String], Seq[String])  = {
+    val trainData = readXMLFiles(trainFiles)
+    val evalData = readXMLFiles(evalFiles)
    
-    val topLabel = (trainData \ "item")
+    val topLabel = trainData
                      .map(item => (item \ "@label").text)
                      .groupBy(l => l)
                      .mapValues(_.length)
                      .reduceLeft((a, b) => if(a._2 > b._2) a else b)
                      ._1
     
-    val goldLabels = (evalData \ "item").map{item => (item \ "@label").text}
+    val goldLabels = evalData.map{item => (item \ "@label").text}
     val predictedLabels = goldLabels.map(_ => topLabel)
     (goldLabels, predictedLabels, goldLabels)
   }
@@ -88,10 +94,10 @@ object LexiconMethod extends Method {
    * 
    * @param evalFile - The path to the evaluation xml file
    */
-  def apply(evalFile: String):(Seq[String], Seq[String], Seq[String])  = {
-    val evalData = readXML(evalFile)
-    val goldLabels = (evalData \ "item").map{item => (item \ "@label").text}
-    val predictedLabels = (evalData \ "item").map(item => labelInput(item.text))
+  def apply(evalFiles: List[String]):(Seq[String], Seq[String], Seq[String])  = {
+    val evalData = readXMLFiles(evalFiles)
+    val goldLabels = evalData.map{item => (item \ "@label").text}
+    val predictedLabels = evalData.map(item => labelInput(item.text))
     (goldLabels, predictedLabels, goldLabels)
   }
 
@@ -166,7 +172,11 @@ object L2RLLRMethod extends Method {
       val taggedFeatures = tagged
         .map{case (word, tag) => FeatureObservation("word+tag="+word+"+"+tag)}
 		        
-      wordFeatures ++ polarityFeature ++ allWordFeatures ++ stemFeatures ++ taggedFeatures
+      wordFeatures ++ 
+      polarityFeature ++ 
+      allWordFeatures ++ 
+      stemFeatures ++ 
+      taggedFeatures
     }
   }
   
@@ -174,18 +184,18 @@ object L2RLLRMethod extends Method {
    * A function to use L2-regularized logistic regression
    * for SA.
    * 
-   * @param trainFile - The path to the training xml file
-   * @param evalFile - The path to the evaluation xml file
+   * @param trainFiles - The path to the training xml file
+   * @param evalFiles - The path to the evaluation xml file
    * @param costParam - The cost for value for the model.
    * @param extended - A boolean value for whether or not to
    *                   use extended features.
    */
-  def apply(trainFile: String, 
-            evalFile: String, 
+  def apply(trainFiles: List[String], 
+            evalFiles: List[String], 
             costParam: Double, 
             extended: Boolean):(Seq[String], Seq[String], Seq[String]) = {
 
-    val rawExamples = readRaw(trainFile)
+    val rawExamples = readRaw(trainFiles)
     val config = LiblinearConfig(cost=costParam)    
     val classifier = trainClassifier(config, 
                                      if(extended) ExtendedFeaturizer else SimpleFeaturizer,
@@ -193,7 +203,7 @@ object L2RLLRMethod extends Method {
 
     def maxLabelPpa = maxLabel(classifier.labels) _
 
-    val comparisons = for (ex <- readRaw(evalFile).toList) yield 
+    val comparisons = for (ex <- readRaw(evalFiles).toList) yield 
       (ex.label, maxLabelPpa(classifier.evalRaw(ex.features)), ex.features)
       
     comparisons.unzip3
@@ -205,9 +215,11 @@ object L2RLLRMethod extends Method {
    * @param filename - The name of the file in the resources
    *                   folder containing the data to read. 
    */
-  def readRaw(filename: String) = 
-    for(item <- (readXML(filename) \ "item")) 
-      yield Example((item \ "@label").text, item.text.trim)
+  def readRaw(filenames: List[String]) = 
+    filenames.flatMap(filename => 
+      for(item <- (readXML(filename) \ "item")) 
+        yield Example((item \ "@label").text, item.text.trim)
+    )
 }
 
 object ExpOpts {
@@ -236,8 +248,8 @@ For usage see below:
                        """)
     
     val methodTypes = Set("lexicon", "L2R_LR", "majority")
-    val train = opt[String]("train", short='t', descr="The files containing training events.")
-    val eval = opt[String]("eval", short='e', required=true, descr="The files containing evalualation events.")
+    val train = opt[List[String]]("train", short='t', descr="The files containing training events.")
+    val eval = opt[List[String]]("eval", short='e', required=true, descr="The files containing evalualation events.")
     val method = opt[String]("method", short='m', default=Some("L2R_LR"), descr="The type of solver to use.")
     val cost = opt[String]("cost", short='c', default=Some("1.0"), descr="Cost parameter for the L2R_LR method.")
     val extended = opt[Boolean]("extended", short='x', default=Some(false), descr="Use extended features")
