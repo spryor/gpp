@@ -10,7 +10,8 @@ import nak.liblinear._
 import nak.util.ConfusionMatrix
 import chalk.lang.eng.{PorterStemmer,Twokenize}
 import cmu.arktweetnlp.Tagger
-import cmu.arktweetnlp.Tagger.TaggedToken
+import cmu.arktweetnlp.Tagger._
+import scala.collection.JavaConversions._
 
 /**
  * The Exp object contains the main method for the Exp
@@ -123,12 +124,12 @@ object L2RLLRMethod extends Method {
 
   //A featurizer using simple bag-of-words features
   val SimpleFeaturizer = new Featurizer[String, String] {
-        def apply(input: String) = input
-         .replaceAll("""([\?!\";\|\[\]])""", " $1 ") 
-         .trim
-         .split("\\s+")
-         .map(tok => FeatureObservation("word="+tok))
-      }
+    def apply(input: String) = input
+      .replaceAll("""([\?!\";\|\[\]])""", " $1 ") 
+      .trim
+      .split("\\s+")
+      .map(tok => FeatureObservation("word="+tok))
+  }
 
   val Stemmer = new PorterStemmer
   val Tagger = {
@@ -140,42 +141,34 @@ object L2RLLRMethod extends Method {
   //A featurizer using lowercase bag-of-words features
   //combined with lexicon based polarity features.
   val ExtendedFeaturizer = new Featurizer[String, String] {
-        def apply(input: String) = {
-          val words = input
-            .replaceAll("""([\?!\";\|\[\]])""", " $1 ") 
-            .trim
-            .toLowerCase
-            .replaceAll("(.)\\1\\1", "$1") 
-            .split("\\s+") 
- 
-          val wordFeatures = words
-            .filterNot(English.stopwords)
-            .map(tok => FeatureObservation("word="+tok))
-          val polarityFeature = 
-            Array(FeatureObservation("polarity="+LexiconMethod.labelInput(input)))
-          val allWordFeatures = words
-            .map(tok => FeatureObservation("everyWord="+tok))
-          val stemFeatures = words
-            .map(tok => (tok, Stemmer(tok)))
-            .filterNot(pair => pair._1 == pair._2)
-            .map{case (tok, stem) => FeatureObservation("stem="+stem)}
+    def apply(input: String) = {
+      val words = input
+        .replaceAll("""([\?!\";\|\[\]])""", " $1 ") 
+        .trim
+        .toLowerCase
+        .replaceAll("(.)\\1\\1", "$1") 
+        .split("\\s+") 
+	 
+      val wordFeatures = words
+        .filterNot(English.stopwords)
+	.map(tok => FeatureObservation("word="+tok))
+      val polarityFeature = 
+        Array(FeatureObservation("polarity="+LexiconMethod.labelInput(input)))
+      val allWordFeatures = words
+        .map(tok => FeatureObservation("everyWord="+tok))
+      val stemFeatures = words
+        .map(tok => (tok, Stemmer(tok)))
+	.filterNot(pair => pair._1 == pair._2)
+	.map{case (tok, stem) => FeatureObservation("stem="+stem)}
 
-          val tagged: List[TaggedToken] = Tagger.tokenizeAndTag(input)
-          val it = tagged.iterator
-          var sequence: MutableList[(String, String)] = MutableList()
-          
-          while(it.hasNext()) {
-            val item = it.next()
-            val pair: (String, String) = (item.token, item.tag)
-            sequence += pair
-          }
+      val tagged: List[(String, String)] = asScalaBuffer(Tagger.tokenizeAndTag(input)).toList.map(token => (token.token, token.tag))
 
-          val taggedFeatures = sequence
-            .map(pair => FeatureObservation("word+tag="+pair._1+"+"+pair._2))
-          
-          wordFeatures ++ polarityFeature ++ allWordFeatures ++ stemFeatures ++ taggedFeatures
-        }
-      }
+      val taggedFeatures = tagged
+        .map{case (word, tag) => FeatureObservation("word+tag="+word+"+"+tag)}
+		        
+      wordFeatures ++ polarityFeature ++ allWordFeatures ++ stemFeatures ++ taggedFeatures
+    }
+  }
   
   /**
    * A function to use L2-regularized logistic regression
@@ -221,7 +214,7 @@ object ExpOpts {
 
   import org.rogach.scallop._
 
-  def apply(args: Array[String]) = new ScallopConf(args){
+  def apply(args: Array[String]) = new ScallopConf(args) {
     banner("""
 Classification application.
 
