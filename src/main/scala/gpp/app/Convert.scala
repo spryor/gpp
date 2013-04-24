@@ -2,21 +2,25 @@ package gpp.app
 
 import gpp.util._
 
+class Convert {
+  val version = "0.1.0"
+}
+
 /**
  * The Convert_Stanford object contains the main method
  * which reads from the Stanford datafile and coverts it
  * into a xml file to be used in the sentiment analysis
  */
 
-object Convert_Stanford {
+object Convert_Stanford extends Convert {
 
   def main(args: Array[String]) {
-    if(args.length < 1) {
-      println("Error: File path missing")
-      System.exit(1)
+    val opts = ConvertOpts(args)
+    if(opts.version()) {
+      println("Version " + version)
+      System.exit(0)
     }
- 
-    val stanfordData = getData(args(0).mkString)
+    val stanfordData = getData(opts.filename().mkString)
     val marshalled =
       <dataset>
       { stanfordData.map { data =>
@@ -53,11 +57,16 @@ object Convert_Stanford {
  * which reads from the emoticon datafiles and coverts them
  * into a xml file to be used in the sentiment analysis
  */
-object Convert_Emoticon {
+object Convert_Emoticon extends Convert {
 
   def main(args: Array[String]) {
+    val opts = ConvertOpts(args)
+    if(opts.version()) {
+      println("Version " + version)
+      System.exit(0)
+    }
     val files = IndexedSeq("happy.txt","neutral.txt","sad.txt")
-    val dataDir = args(0).mkString + "/"
+    val dataDir = opts.filename().mkString + "/"
     val twitterData = getData(dataDir+files(0)) ++ getData(dataDir+files(1)) ++ getData(dataDir+files(2)) 
     val marshalled = 
       <dataset>
@@ -88,5 +97,21 @@ object Convert_Emoticon {
       case f if f.endsWith("sad.txt") => "negative"
       case _ => "neutral"
     }
+  }
+}
+
+object ConvertOpts {
+
+  import org.rogach.scallop._
+
+  def apply(args: Array[String]) = new ScallopConf(args) {
+    banner("""
+Application for Converting.
+
+For usage see below:
+""")
+    val version = opt[Boolean]("version", noshort=true, default=Some(false), descr="Show version of this program")
+    val filename = trailArg[String]("filename", required=false, descr = "The input filename.")
+
   }
 }
