@@ -158,7 +158,6 @@ object LiblinearMethod extends Method {
         .trim
         .toLowerCase
         .replaceAll("(.)\\1{2,}", "$1")
-        //.replaceAll("(.)\\1\\1", "$1") 
         .split("\\s+") 
 	 
       val wordFeatures = words
