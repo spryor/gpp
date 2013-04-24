@@ -2,6 +2,12 @@ package gpp.app
 
 import gpp.util._
 
+/**
+ * The Convert_Stanford object contains the main method
+ * which reads from the Stanford datafile and coverts it
+ * into a xml file to be used in the sentiment analysis
+ */
+
 object Convert_Stanford {
 
   def main(args: Array[String]) {
@@ -42,6 +48,11 @@ object Convert_Stanford {
   }
 }
 
+/**
+ * The Convert_Emoticon object contains the main method
+ * which reads from the emoticon datafiles and coverts them
+ * into a xml file to be used in the sentiment analysis
+ */
 object Convert_Emoticon {
 
   def main(args: Array[String]) {
