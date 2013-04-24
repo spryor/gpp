@@ -20,18 +20,26 @@ import scala.collection.JavaConversions._
  */
 object Exp {  
  
+  val version = "0.1.0"
+
   def main(args: Array[String]) {
     val opts = ExpOpts(args)
-    
-    opts.method() match {
-      case "majority" => val (goldLabels, predictedLabels, items) = MajorityMethod(opts.train(), opts.eval())
-                        println(ConfusionMatrix(goldLabels, predictedLabels, items))
-      case "lexicon" => val (goldLabels, predictedLabels, items) = LexiconMethod(opts.eval())
-                        println(ConfusionMatrix(goldLabels, predictedLabels, items))
-      case "L2R_LR" => val (goldLabels, predictedLabels, items) = L2RLLRMethod(opts.train(),opts.eval(),opts.cost().toDouble, opts.extended())
-                        println(ConfusionMatrix(goldLabels, predictedLabels, items))
-      case _ => println("Method not implemented")
+
+    if(opts.version()) {
+      println("Version " + version)
+      System.exit(0)
     }
+
+    val (goldLabels, predictedLabels, items) = opts.method() match {
+      case "majority" => MajorityMethod(opts.train(), opts.eval())
+      case "lexicon" => LexiconMethod(opts.eval())
+      case _ => LiblinearMethod(opts.method(), opts.train(), opts.eval(), opts.cost(), opts.extended())
+    }
+
+    val confusionMatrix = ConfusionMatrix(goldLabels, predictedLabels, items)
+
+    if(!opts.detailed()) println(confusionMatrix)
+    else println(confusionMatrix.detailedOutput)
   }
 
 }
@@ -43,11 +51,14 @@ object Exp {
 class Method {
 
   /**
-    * A simple helper function for reading XML files
-    *
-    * @param path - The path to the XML file to be read
-    */
+   * A simple helper function for reading XML files
+   *
+   * @param path - The path to the XML file to be read
+   */
   def readXML(path: String) = scala.xml.XML.loadFile(path)
+
+  def readXMLFiles(paths: List[String]) =
+    paths.flatMap(path => (readXML(path) \ "item")) 
 }
 
 /**
@@ -61,20 +72,21 @@ object MajorityMethod extends Method {
    * @param trainFile - The path to the training xml file
    * @param evalFile - The path to the evaluation xml file
    */
-  def apply(trainFile: String, evalFile: String):(Seq[String], Seq[String], Seq[String])  = {
-    val trainData = readXML(trainFile)
-    val evalData = readXML(evalFile)
+  def apply(trainFiles: List[String], 
+            evalFiles: List[String]):(Seq[String], Seq[String], Seq[String])  = {
+    val trainData = readXMLFiles(trainFiles)
+    val evalData = readXMLFiles(evalFiles)
    
-    val topLabel = (trainData \ "item")
+    val topLabel = trainData
                      .map(item => (item \ "@label").text)
                      .groupBy(l => l)
                      .mapValues(_.length)
                      .reduceLeft((a, b) => if(a._2 > b._2) a else b)
                      ._1
     
-    val goldLabels = (evalData \ "item").map{item => (item \ "@label").text}
+    val goldLabels = evalData.map{item => (item \ "@label").text}
     val predictedLabels = goldLabels.map(_ => topLabel)
-    (goldLabels, predictedLabels, goldLabels)
+    (goldLabels, predictedLabels, evalData.map(_.text.trim))
   }
 }
 
@@ -88,11 +100,11 @@ object LexiconMethod extends Method {
    * 
    * @param evalFile - The path to the evaluation xml file
    */
-  def apply(evalFile: String):(Seq[String], Seq[String], Seq[String])  = {
-    val evalData = readXML(evalFile)
-    val goldLabels = (evalData \ "item").map{item => (item \ "@label").text}
-    val predictedLabels = (evalData \ "item").map(item => labelInput(item.text))
-    (goldLabels, predictedLabels, goldLabels)
+  def apply(evalFiles: List[String]):(Seq[String], Seq[String], Seq[String])  = {
+    val evalData = readXMLFiles(evalFiles)
+    val goldLabels = evalData.map{item => (item \ "@label").text}
+    val predictedLabels = evalData.map(item => classifyTweet(item.text))
+    (goldLabels, predictedLabels, evalData.map(_.text.trim))
   }
 
   /**
@@ -101,7 +113,7 @@ object LexiconMethod extends Method {
    *
    * @param input - The string to be labeled.
    */
-  def labelInput(input: String) = {
+  def classifyTweet(input: String) = {
     val labelAssignment = Twokenize(input)
       .map(English.polarityLexicon)
       .sum
@@ -113,11 +125,10 @@ object LexiconMethod extends Method {
 }
 
 /**
- * The L2RLLRMethod object contains the functionality for 
- * running L2-regularized logistic regression based sentiment 
- * analysis. 
+ * The LiblinearMethod object contains the functionality for 
+ * running various liblinear classifiers for sentiment analysis. 
  */
-object L2RLLRMethod extends Method {
+object LiblinearMethod extends Method {
 
   import java.util.List
   import scala.collection.mutable.MutableList
@@ -131,19 +142,19 @@ object L2RLLRMethod extends Method {
       .map(tok => FeatureObservation("word="+tok))
   }
 
-  val Stemmer = new PorterStemmer
-  val Tagger = {
+  lazy val Stemmer = new PorterStemmer
+  lazy val Tagger = {
     val model = new Tagger
     model.loadModel("/cmu/arktweetnlp/model.20120919")
     model
   }
-
+  
   //A featurizer using lowercase bag-of-words features
   //combined with lexicon based polarity features.
   val ExtendedFeaturizer = new Featurizer[String, String] {
     def apply(input: String) = {
       val words = input
-        .replaceAll("""([\?!\";\|\[\]])""", " $1 ") 
+        .replaceAll("""([\?!\";:,\|\[\]])""", " ") 
         .trim
         .toLowerCase
         .replaceAll("(.)\\1\\1", "$1") 
@@ -152,21 +163,31 @@ object L2RLLRMethod extends Method {
       val wordFeatures = words
         .filterNot(English.stopwords)
 	.map(tok => FeatureObservation("word="+tok))
+
       val polarityFeature = 
-        Array(FeatureObservation("polarity="+LexiconMethod.labelInput(input)))
-      val allWordFeatures = words
-        .map(tok => FeatureObservation("everyWord="+tok))
+        Array(FeatureObservation("lexicalPolarity="+LexiconMethod.classifyTweet(input)))
+
+      val rawWordFeatures = words
+        .map(tok => FeatureObservation("rawWord="+tok))
+
       val stemFeatures = words
         .map(tok => (tok, Stemmer(tok)))
 	.filterNot(pair => pair._1 == pair._2)
 	.map{case (tok, stem) => FeatureObservation("stem="+stem)}
 
-      val tagged: List[(String, String)] = asScalaBuffer(Tagger.tokenizeAndTag(input)).toList.map(token => (token.token, token.tag))
+      val tags: List[String] = 
+        asScalaBuffer(Tagger.tokenizeAndTag(input))
+          .toList
+          .map(_.tag)
 
-      val taggedFeatures = tagged
-        .map{case (word, tag) => FeatureObservation("word+tag="+word+"+"+tag)}
-		        
-      wordFeatures ++ polarityFeature ++ allWordFeatures ++ stemFeatures ++ taggedFeatures
+      val tagFeatures = tags
+        .map(tag => FeatureObservation("tag="+tag))
+      
+      wordFeatures ++ 
+      polarityFeature ++ 
+      rawWordFeatures ++ 
+      stemFeatures ++ 
+      tagFeatures
     }
   }
   
@@ -174,27 +195,29 @@ object L2RLLRMethod extends Method {
    * A function to use L2-regularized logistic regression
    * for SA.
    * 
-   * @param trainFile - The path to the training xml file
-   * @param evalFile - The path to the evaluation xml file
+   * @param method - The type of classifier to use
+   * @param trainFiles - The path to the training xml file
+   * @param evalFiles - The path to the evaluation xml file
    * @param costParam - The cost for value for the model.
    * @param extended - A boolean value for whether or not to
    *                   use extended features.
    */
-  def apply(trainFile: String, 
-            evalFile: String, 
+  def apply(method: String,
+            trainFiles: List[String], 
+            evalFiles: List[String], 
             costParam: Double, 
             extended: Boolean):(Seq[String], Seq[String], Seq[String]) = {
 
-    val rawExamples = readRaw(trainFile)
-    val config = LiblinearConfig(cost=costParam)    
+    val rawExamples = readRaw(trainFiles)
+    val config = LiblinearConfig(solverType=Solver(method), cost=costParam)    
     val classifier = trainClassifier(config, 
                                      if(extended) ExtendedFeaturizer else SimpleFeaturizer,
                                      rawExamples)
 
-    def maxLabelPpa = maxLabel(classifier.labels) _
+    def maxLabelLiblinear = maxLabel(classifier.labels) _
 
-    val comparisons = for (ex <- readRaw(evalFile).toList) yield 
-      (ex.label, maxLabelPpa(classifier.evalRaw(ex.features)), ex.features)
+    val comparisons = for (ex <- readRaw(evalFiles).toList) yield 
+      (ex.label, maxLabelLiblinear(classifier.evalRaw(ex.features)), ex.features)
       
     comparisons.unzip3
   }
@@ -205,9 +228,11 @@ object L2RLLRMethod extends Method {
    * @param filename - The name of the file in the resources
    *                   folder containing the data to read. 
    */
-  def readRaw(filename: String) = 
-    for(item <- (readXML(filename) \ "item")) 
-      yield Example((item \ "@label").text, item.text.trim)
+  def readRaw(filenames: List[String]) = 
+    filenames.flatMap(filename => 
+      for(item <- (readXML(filename) \ "item")) 
+        yield Example((item \ "@label").text, item.text.trim)
+    )
 }
 
 object ExpOpts {
@@ -219,28 +244,18 @@ object ExpOpts {
 Classification application.
 
 For usage see below:
-       
-  -c, --cost  <arg>       The cost parameter C. Bigger values means less
-                          regularization (more fidelity to the training set).
-                          (default = 1.0)
-  -d, --detailed          
-  -e, --eval  <arg>...    The files containing evalualation events.
-  -x, --extended          Use extended features.
-  -m, --method  <arg>     The type of solver to use. Possible values: majority,
-                          lexicon, or any liblinear solver type.
-                          (default = L2R_LR)
-  -t, --train  <arg>...   The files containing training events.
-  -v, --verbose           
-      --help              Show this message
-      --version           Show version of this program
-                       """)
+""")
     
-    val methodTypes = Set("lexicon", "L2R_LR", "majority")
-    val train = opt[String]("train", short='t', descr="The files containing training events.")
-    val eval = opt[String]("eval", short='e', required=true, descr="The files containing evalualation events.")
-    val method = opt[String]("method", short='m', default=Some("L2R_LR"), descr="The type of solver to use.")
-    val cost = opt[String]("cost", short='c', default=Some("1.0"), descr="Cost parameter for the L2R_LR method.")
-    val extended = opt[Boolean]("extended", short='x', default=Some(false), descr="Use extended features")
+    val methodTypes = Set("majority", "lexicon") ++ Solver.solverTypes
+    val train = opt[List[String]]("train", short='t', descr="The files containing training events.")
+    val eval = opt[List[String]]("eval", short='e', required=true, descr="The cost parameter C. Bigger values means less regularization (more fidelity to the training set). (default = 1.0)")
+    val method = opt[String]("method", short='m', default=Some("L2R_LR"), validate = methodTypes, descr="The type of solver to use. Possible values: majority, lexicon, or any liblinear solver type. (default = L2R_LR)")
+    val cost = opt[Double]("cost", short='c', default=Some(1.0), descr="The cost parameter C. Bigger values means less regularization (more fidelity to the training set). (default = 1.0)")
+    val extended = opt[Boolean]("extended", short='x', default=Some(false), descr="Use extended features.")
+    val detailed = opt[Boolean]("detailed", short='d', default=Some(false))
+    val version = opt[Boolean]("version", noshort=true, default=Some(false), descr="Show version of this program")
+    val help = opt[Boolean]("help", noshort = true, descr = "Show this message")
+    val verbose = opt[Boolean]("verbose", short='v')
   }
 }
 
