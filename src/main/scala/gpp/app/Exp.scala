@@ -131,7 +131,6 @@ object LexiconMethod extends Method {
 object LiblinearMethod extends Method {
 
   import java.util.List
-  import scala.collection.mutable.MutableList
 
   //A featurizer using simple bag-of-words features
   val SimpleFeaturizer = new Featurizer[String, String] {
@@ -162,31 +161,21 @@ object LiblinearMethod extends Method {
 	 
       val wordFeatures = words
         .filterNot(English.stopwords)
-	.map(tok => FeatureObservation("word="+tok))
+	.map(tok => FeatureObservation("word="+Stemmer(tok)))
 
       val polarityFeature = 
         Array(FeatureObservation("lexicalPolarity="+LexiconMethod.classifyTweet(input)))
 
-      val rawWordFeatures = words
-        .map(tok => FeatureObservation("rawWord="+tok))
-
-      val stemFeatures = words
-        .map(tok => (tok, Stemmer(tok)))
-	.filterNot(pair => pair._1 == pair._2)
-	.map{case (tok, stem) => FeatureObservation("stem="+stem)}
-
-      val tags: List[String] = 
+      val tags = 
         asScalaBuffer(Tagger.tokenizeAndTag(input))
           .toList
-          .map(_.tag)
+	  .map(_.tag)
 
       val tagFeatures = tags
         .map(tag => FeatureObservation("tag="+tag))
-      
+
       wordFeatures ++ 
       polarityFeature ++ 
-      rawWordFeatures ++ 
-      stemFeatures ++ 
       tagFeatures
     }
   }
